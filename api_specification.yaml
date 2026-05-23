@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: MediBrief AI - Clinical API
+  description: API for processing unstructured patient medical records into structured clinical insights.
+  version: 1.0.0
+servers:
+  - url: https://medibrief-api.render.com
+    description: Production Backend (Spring Boot)
+  - url: http://localhost:8080
+    description: Local Development Backend
+  - url: https://ngrok-tunnel-to-ai.io
+    description: AI Service (FastAPI) via Tunnel
+
+paths:
+  /api/patient/process:
+    post:
+      summary: Process raw medical text (Frontend to Backend)
+      tags:
+        - Patient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientRequest'
+      responses:
+        '200':
+          description: Successfully processed clinical record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/AiServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/ProcessingTimeout'
+
+  /process:
+    post:
+      summary: Internal AI Processing (Backend to AI Service)
+      tags:
+        - AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiServiceRequest'
+      responses:
+        '200':
+          description: AI extraction successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiServiceResponse'
+        '500':
+          description: Internal AI processing error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+components:
+  schemas:
+    PatientRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          minLength: 50
+          maxLength: 5000
+          example: "Patient John D., 58M. History of HTN and DM. Allergic to Penicillin..."
+
+    PatientResponse:
+      type: object
+      properties:
+        summary:
+          type: string
+          nullable: true
+          example: "58-year-old male with hypertension and type 2 diabetes."
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        flags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Flag'
+        sources:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            "DISEASE_12": "Patient has a history of Hypertension."
+        partial:
+          type: boolean
+          description: Indicates if the result is only partially complete due to model failure.
+        error:
+          type: string
+          nullable: true
+
+    AiServiceRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+
+    AiServiceResponse:
+      type: object
+      properties:
+        summary:
+          type: string
+          nullable: true
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        entities:
+          $ref: '#/components/schemas/Entities'
+        sources:
+          type: object
+          additionalProperties:
+            type: string
+
+    TimelineEvent:
+      type: object
+      properties:
+        date:
+          type: string
+          example: "2015"
+        event:
+          type: string
+          example: "Diagnosed with Hypertension"
+
+    Flag:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ALLERGY, CHRONIC_DISEASE, ACUTE_EVENT, PAST_PROCEDURE, MEDICATION_NOTE]
+        entity:
+          type: string
+        severity:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        reason:
+          type: string
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        sourceId:
+          type: string
+
+    Entities:
+      type: object
+      properties:
+        diseases:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        allergies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        medications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        procedures:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        symptoms:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+
+    Entity:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        label:
+          type: string
+
+    ErrorDetail:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    ValidationError:
+      description: Input validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
+    AiServiceUnavailable:
+      description: Could not connect to the AI microservice
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
+    ProcessingTimeout:
+      description: AI processing took longer than 30 seconds
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
